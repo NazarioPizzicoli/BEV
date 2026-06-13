@@ -1,0 +1,23 @@
+# ─── Core ML ──────────────────────────────────────────────────────────────────
+# torch è installato separatamente nel Dockerfile con il wheel CUDA corretto
+numpy>=1.24,<3.0
+pillow>=10.0
+
+# ─── Config management ────────────────────────────────────────────────────────
+hydra-core>=1.3
+omegaconf>=2.3
+
+# ─── Logging & tracking ───────────────────────────────────────────────────────
+# Scegli uno (decommenta quello che usi):
+# wandb
+# tensorboard
+
+# ─── Data & utils ─────────────────────────────────────────────────────────────
+pandas>=2.0
+tqdm
+pyyaml
+
+# ─── HuggingFace (opzionale, per modelli pretrained) ─────────────────────────
+# transformers
+# datasets
+# accelerate

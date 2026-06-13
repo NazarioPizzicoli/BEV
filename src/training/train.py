@@ -1,6 +1,6 @@
 import torch
 
-
+"""
 def train_epoch(model, loader, optimizer, criterion, device):
     model.train()
     total_loss, correct = 0.0, 0
@@ -25,7 +25,7 @@ def train_epoch(model, loader, optimizer, criterion, device):
         correct += (out.argmax(1) == ans).sum().item()
 
     return total_loss / len(loader), correct / len(loader.dataset)
-
+"""
 
 def val_epoch(model, loader, criterion, device):
     model.eval()
@@ -45,3 +45,23 @@ def val_epoch(model, loader, criterion, device):
             correct += (out.argmax(1) == ans).sum().item()
 
     return total_loss / len(loader), correct / len(loader.dataset)
+
+def train_epoch(model, loader, optimizer, criterion, device):
+    model.train()
+    total_loss, correct = 0, 0
+    for i, (feat, quest, ans) in enumerate(loader):
+        feat, quest, ans = feat.to(device), quest.to(device), ans.to(device)
+        
+        optimizer.zero_grad()
+        out = model(feat, quest)
+        loss = criterion(out, ans)
+        loss.backward()
+        optimizer.step()
+        
+        total_loss += loss.item()
+        correct += (out.argmax(1) == ans).sum().item()
+        
+        if i % 100 == 0:
+            print(f"  Batch {i}/{len(loader)} | Loss: {loss.item():.4f}")
+    
+    return total_loss/len(loader), correct/len(loader.dataset)

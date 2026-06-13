@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  dev:
+    build:
+      context: ..               # Guarda la cartella principale del progetto
+      dockerfile: docker/Dockerfile
+    image: bev:dev
+    container_name: bev_dev
+    ports:
+      - "8888:8888"            # Jupyter Lab
+      - "6006:6006"            # TensorBoard
+    volumes:
+      # Monta la cartella principale del progetto live
+      - ..:/workspace          
+      
+      # Mappatura dei tuoi dataset sul PC dentro il container
+      - /media/robesafe-sandra/Datos/dataset:/data/dataset
+      - /media/robesafe-sandra/Datos/dataset_mini:/data/dataset_mini
+      
+      # Mantiene in cache i modelli scaricati da HuggingFace
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - PYTHONPATH=/workspace
+      - DATA_DIR=/data
+    ipc: host                  # Evita crash con PyTorch DataLoader
+    tty: true
+    stdin_open: true

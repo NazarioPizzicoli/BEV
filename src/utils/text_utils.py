@@ -15,7 +15,7 @@ def load_glove(glove_path):
     return glove
 
 
-def encode_question(question, glove, max_len=35):
+def encode_question(question, glove, max_len=30):
     tokens = question.lower().split()
     vectors = []
     for token in tokens:
@@ -25,7 +25,7 @@ def encode_question(question, glove, max_len=35):
     while len(vectors) < max_len:
         vectors.append(np.zeros(300, dtype=np.float32))
     vectors = vectors[:max_len]  # truncate se > max_len
-    return torch.tensor(np.array(vectors), dtype=torch.float32)  # [35, 300]
+    return torch.tensor(np.array(vectors), dtype=torch.float32)  # [30, 300]
 
 
 def decode_question(json_path):
@@ -33,4 +33,5 @@ def decode_question(json_path):
         data = json.load(f)
     unique_answers = sorted(set(q["answer"] for q in data["questions"]))
     answer2idx = {ans: idx for idx, ans in enumerate(unique_answers)}
+    idx2answer = {idx: ans for ans, idx in answer2idx.items()}
     return answer2idx
