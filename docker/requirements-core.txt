@@ -1,5 +1,6 @@
 # ─── Core ML ──────────────────────────────────────────────────────────────────
 # torch è installato separatamente nel Dockerfile con il wheel CUDA corretto
+torchvision
 numpy>=1.24,<3.0
 pillow>=10.0
 
@@ -16,6 +17,8 @@ omegaconf>=2.3
 pandas>=2.0
 tqdm
 pyyaml
+scikit-learn
+seaborn
 
 # ─── HuggingFace (opzionale, per modelli pretrained) ─────────────────────────
 # transformers

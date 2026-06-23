@@ -1,9 +1,7 @@
-version: "3.9"
-
 services:
   dev:
     build:
-      context: ..               # Guarda la cartella principale del progetto
+      context: ..
       dockerfile: docker/Dockerfile
     image: bev:dev
     container_name: bev_dev
@@ -14,11 +12,11 @@ services:
       # Monta la cartella principale del progetto live
       - ..:/workspace          
       
-      # Mappatura dei tuoi dataset sul PC dentro il container
-      - /media/robesafe-sandra/Datos/dataset:/data/dataset
-      - /media/robesafe-sandra/Datos/dataset_mini:/data/dataset_mini
+      # Mappatura dei dataset mantenendo lo stesso path dell'host per trasparenza con Hydra
+      - /media/robesafe-sandra/Datos1/dataset:/media/robesafe-sandra/Datos1/dataset
+      - /media/robesafe-sandra/Datos1/dataset_mini:/media/robesafe-sandra/Datos1/dataset_mini
       
-      # Mantiene in cache i modelli scaricati da HuggingFace
+      # Mantiene in cache i modelli scaricati
       - ~/.cache/huggingface:/root/.cache/huggingface
     deploy:
       resources:
@@ -29,8 +27,8 @@ services:
               capabilities: [gpu]
     environment:
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
-      - PYTHONPATH=/workspace
-      - DATA_DIR=/data
+      - PYTHONPATH=/workspace/src
     ipc: host                  # Evita crash con PyTorch DataLoader
+    shm_size: '8gb'            # Dimensione della memoria condivisa
     tty: true
     stdin_open: true
