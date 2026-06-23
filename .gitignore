@@ -48,7 +48,7 @@ htmlcov/
 # ==============================================================================
 .ipynb_checkpoints/
 *.notebook
-
+/notebooks/*
 # Artifacts e Pesi dei Modelli (pesanti/binari)
 *.pt
 *.pth
