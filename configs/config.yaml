@@ -1,0 +1,46 @@
+# configs/config.yaml
+defaults:
+  - _self_
+  - paths: mini.yaml
+
+# Variabile per distinguere i run
+run_name: ${hydra:runtime.choices.paths}
+
+hydra:
+  run:
+    dir: outputs/${run_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: multirun/${run_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
+  job:
+    chdir: True #Per salvare tutto nella cartella run.dir
+
+training:
+  batch_size: 4
+  lr: 1e-4
+  num_epochs: 50
+  num_workers: 2
+  early_stopping_patience: 5
+  scheduler_patience: 3
+  scheduler_factor: 0.5
+  gradient_clip: 1.0
+  use_amp: true
+
+model:
+  # Opzioni disponibili per type: 
+  # - "linear"  (1. Semplice: AdaptiveAvgPool2d + Linear)
+  # - "cnn"     (2. CNN: ResNet50 + FPN)
+  # - "vit"     (3. ViT: BEV-MAE style)
+  # - "former"  (4. Former: Cross-Attention con query learnable)
+  type: "linear" 
+  text:
+    use_lstm: true
+    embed_dim: 300
+    hidden_dim: 256
+    num_layers: 1
+    d_model: 512
+
+#To resume this session: gemini --resume 193f4234-b7b1-433e-bef9-dab2228d97ae
+#gemini --resume abbf84f5-62f9-4154-94cc-cb60d4b10baf   
+#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
+#uv run python main.py defaults.paths=mini training.batch_size=4 training.num_workers=2 model.type="linear"
