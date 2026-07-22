@@ -37,25 +37,27 @@ multi-camera images).
 
 ### Repository structure
 
+```text
 BEV-VLM/
-├── main.py # Hydra entry point (training)
-├── test_inference.py # final inference/evaluation on a full split
-├── analyze_results.py # per-question-category metrics aggregation
-├── visualize_samples.py # exports sample images (BEV + Q/A) per category
-├── make_notebook.py # generates a Jupyter notebook for interactive inspection
+├── main.py                     # Hydra entry point (training)
+├── test_inference.py           # Final inference/evaluation on full split
+├── analyze_results.py          # Per-category metrics aggregation
+├── visualize_samples.py        # Export sample images (BEV + Q/A)
+├── make_notebook.py            # Generate Jupyter notebook for interactive inspection
 ├── configs/
-│ ├── config.yaml # main Hydra config
-│ └── paths/
-│ ├── mini_veh.yaml # small subset, for debugging
-│ └── veh.yaml # full dataset
+│   ├── config.yaml             # Main Hydra config
+│   └── paths/
+│       ├── mini_veh.yaml       # Small subset (debugging)
+│       └── veh.yaml            # Full dataset
 └── src/bev/
-├── data/
-│ └── dataset.py # BEVQADataset, tokenizer, collate functions
-├── models/
-│ ├── vision.py # Q-Former (BEVQFormerModel) — vision encoder
-│ └── model.py # BEVVLM — assembles vision encoder + LLM + LoRA
-└── training/
-└── train.py # train_epoch, val_loss, evaluate
+    ├── data/
+    │   └── dataset.py          # BEVQADataset, tokenizer, collate functions
+    ├── models/
+    │   ├── vision.py           # Q-Former (BEVQFormerModel)
+    │   └── model.py            # BEVVLM (Vision encoder + LLM + LoRA)
+    └── training/
+        └── train.py            # Train epoch, val loss, evaluation
+```
 
 ## Dataset
 
