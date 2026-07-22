@@ -146,3 +146,21 @@ Observations:
   Autonomous Driving*, arXiv:2512.06096, 2025
 - Qian et al., *NuScenes-QA: A Multi-modal Visual Question Answering Benchmark for
   Autonomous Driving Scenario*, AAAI 2024
+
+##
+
+1. Prima di iniziare: assicurati di partire dall'ultima versione
+cd ~/BEV
+git pull origin main
+
+2. Lavora, poi controlla cosa è cambiato
+git status
+git diff              # per rivedere le modifiche riga per riga, opzionale
+
+3. Aggiungi e committa
+git add .
+git status             # ultimo controllo: niente di pesante/indesiderato in staging
+git commit -m "Messaggio breve e descrittivo (es. 'Add two-stage training support')"
+
+4. Pusha
+git push origin main
