@@ -4,6 +4,15 @@
 [![CUDA 12.8](https://img.shields.io/badge/CUDA-12.8-green.svg)](https://developer.nvidia.com/cuda-toolkit)
 [![WandB](https://img.shields.io/badge/Weights%20%26%20Biases-enabled-orange.svg)](https://wandb.ai/)
 
+
+DA FARE
+
+robesafe@robesafe-nazario:~$ echo $SHELL
+/bin/bash
+robesafe@robesafe-nazario:~$ echo 'export DATASET_DIR="/media/robesafe/Datos/dataset_veh"' >> ~/.bashrc
+robesafe@robesafe-nazario:~$ source ~/.bashrc
+
+
 Questo progetto implementa un framework avanzato di **Visual Question Answering (VQA)** per la guida autonoma. Integra feature spaziali **Bird's Eye View (BEV)** pre-fused con elaborazione del linguaggio naturale (GloVe) per fornire risposte semantiche sulle scene stradali NuScenes.
 
 ## 📂 Struttura della Repository

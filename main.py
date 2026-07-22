@@ -1,240 +1,154 @@
-import json
+"""
+main
+Architecture: vision.py -> model.py -> main.py
+
+Usage:
+    python main.py paths=mini_veh
+    python main.py paths=veh training.batch_size=2 training.grad_accum=8
+"""
 import logging
 import os
-import random
-import sys
+from functools import partial
 from pathlib import Path
 
-# --- ML & Data Libraries ---
-import matplotlib.pyplot as plt
-import seaborn as sns
+import hydra
 import torch
-import torch.optim as optim
 import wandb
-from sklearn.metrics import confusion_matrix
-from torch import nn
+from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
-# --- Configuration & Setup ---
-import hydra
-from omegaconf import DictConfig, OmegaConf
-
-
-# Setup del root del progetto nativo
-PROJECT_ROOT = Path(__file__).resolve().parent
-sys.path.append(str(PROJECT_ROOT / "src"))
-sys.path.append(str(PROJECT_ROOT))
-
-from bev.models.bevqa import get_model
-from bev.data.bevqa_dataset import BEVQADataset
-from bev.training.train import train_epoch, val_epoch
-from bev.utils.text_utils import decode_question
+from src.bev.data.dataset import BEVQADataset, build_tokenizer, collate_train, collate_eval
+from src.bev.models.model import BEVVLM, BEVVLMConfig
+from src.bev.training.train import train_epoch, val_loss, evaluate
 
 log = logging.getLogger(__name__)
 
+
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
-    run_name = f"run_{cfg.model.type}_{cfg.run_name}"
+    wandb.init(project="BEV-VLM", name=cfg.run_name,
+               config=OmegaConf.to_container(cfg, resolve=True))
+    log.info(f"Config:\n{OmegaConf.to_yaml(cfg)}")
 
-    wandb.init(
-        project="BEV-VQA",
-        name=run_name,
-        config=OmegaConf.to_container(cfg, resolve=True)
-    )
-
-    log.info(f"Configuration:\n{OmegaConf.to_yaml(cfg)}")
-    
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    log.info(f"Using device: {device}")
-    log.info(f"Working directory: {os.getcwd()}")
+    log.info(f"Device: {device} | cwd: {os.getcwd()}")
 
-    # Path
     feat_dir = Path(cfg.paths.bev_features_dir)
     dict_dir = Path(cfg.paths.dict_dir)
-    glove_path = Path(cfg.paths.glove_path)
-    assert feat_dir.exists(), f"[ERROR]: Features folder not found -> {feat_dir}"
-    assert dict_dir.exists(), f"[ERROR]:  Dict folder not found -> {dict_dir}"
-    assert glove_path.exists(), f"[ERROR]: Glove file not found -> {glove_path}"
+    assert feat_dir.exists(), f"Features non trovate -> {feat_dir}"
+    assert dict_dir.exists(), f"Dict non trovato -> {dict_dir}"
+
+    n_bev = cfg.model.num_queries
+
+    # Tokenizer (+ token <|bev|>)
+    tok, bev_token_id = build_tokenizer(cfg.llm.name)
 
     # Dataset
-    train_dataset = BEVQADataset(
-        bev_dir=feat_dir / "train",
-        json_path=dict_dir / "NuScenes_train_questions.json",
-        glove=glove_path,
-        answer2idx=None # Il train crea il mapping
+    train_ds = BEVQADataset(
+        feat_dir / "train", dict_dir / "NuScenes_train_questions.json",
+        tok, n_bev_tokens=n_bev, max_len=cfg.training.max_len,
+        cache_dir=Path(cfg.paths.dataset_dir) / "cache", fraction=cfg.data.train_fraction,
     )
-    val_dataset = BEVQADataset(
-        bev_dir=feat_dir / "val",
-        json_path=dict_dir / "NuScenes_val_questions.json",
-        glove=glove_path,
-        answer2idx=train_dataset.answer2idx # Il val usa lo stesso mapping del train
+    val_ds = BEVQADataset(
+        feat_dir / "val", dict_dir / "NuScenes_val_questions.json",
+        tok, n_bev_tokens=n_bev, max_len=cfg.training.max_len,
+        cache_dir=Path(cfg.paths.dataset_dir) / "cache", fraction=cfg.data.val_fraction,
     )
+    log.info(f"Train: {len(train_ds)} QA | Val: {len(val_ds)} QA | bev_tokens={n_bev}")
 
-    train_dataloader = DataLoader(
-        train_dataset, 
-        batch_size=cfg.training.batch_size, 
-        shuffle=True, 
-        num_workers=cfg.training.num_workers,
-        pin_memory=True
+    pad = tok.pad_token_id
+    train_loader = DataLoader(
+        train_ds, batch_size=cfg.training.batch_size, shuffle=True,
+        num_workers=cfg.training.num_workers, pin_memory=True,
+        collate_fn=partial(collate_train, pad_id=pad),
     )
-    val_dataloader = DataLoader(
-        val_dataset, 
-        batch_size=cfg.training.batch_size, 
-        shuffle=False, 
+    val_lm_loader = DataLoader(
+        val_ds, batch_size=cfg.training.batch_size, shuffle=False,
         num_workers=cfg.training.num_workers,
-        pin_memory=True
+        collate_fn=partial(collate_train, pad_id=pad),
+    )
+    val_gen_loader = DataLoader(
+        val_ds, batch_size=cfg.training.eval_batch_size, shuffle=False,
+        num_workers=cfg.training.num_workers,
+        collate_fn=partial(collate_eval, pad_id=pad),
     )
 
     # Modello
-    text_cfg = cfg.model.get("text", None)
-    if text_cfg is not None:
-        text_cfg = OmegaConf.to_container(text_cfg, resolve=True)
-    model = get_model(cfg.model.type, text_config=text_cfg).to(device)
-
-    optimizer = optim.Adam(model.parameters(), lr=cfg.training.lr)
-    criterion = nn.CrossEntropyLoss()
-
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, 
-        mode='min', 
-        factor=cfg.training.scheduler_factor, 
-        patience=cfg.training.scheduler_patience
+    model_cfg = BEVVLMConfig(
+        llm_name=cfg.llm.name, bev_token_id=bev_token_id, vocab_size=len(tok),
+        vision_hidden_size=cfg.model.vision_hidden_size,
+        vision_num_layers=cfg.model.vision_num_layers,
+        vision_num_heads=cfg.model.vision_num_heads,
+        num_queries=cfg.model.num_queries,
+        lora_r=cfg.model.lora.r, lora_alpha=cfg.model.lora.alpha,
+        lora_dropout=cfg.model.lora.dropout,
     )
+    model = BEVVLM(model_cfg).to(device)
 
-    scaler = torch.amp.GradScaler('cuda') if cfg.training.use_amp and device == "cuda" else None
+    n_train_p = sum(p.numel() for p in model.trainable_parameters())
+    log.info(f"Parametri trainabili: {n_train_p/1e6:.2f}M")
 
-    best_val_loss = float('inf')
-    best_val_acc = 0.0
-    epochs_no_improve = 0
-    early_stop_patience = cfg.training.early_stopping_patience
+    optimizer = torch.optim.AdamW(model.trainable_parameters(), lr=cfg.training.lr)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.training.num_epochs)
+    scaler = torch.amp.GradScaler("cuda", enabled=(device == "cuda"))
 
     ckpt_dir = Path("checkpoints")
     ckpt_dir.mkdir(exist_ok=True)
+    best_acc = -1.0
+    best_val_loss = float("inf")
+    patience_counter = 0
+    patience = cfg.training.early_stopping_patience
 
-    # --- LOOP DI TRAINING ---
     for epoch in range(cfg.training.num_epochs):
         log.info(f"Epoch {epoch+1}/{cfg.training.num_epochs}")
-        
-        tr_loss, tr_acc, tr_time = train_epoch(
-            model, train_dataloader, optimizer, criterion, device, 
-            scaler=scaler, grad_clip=cfg.training.gradient_clip
+        tr_loss, tr_time = train_epoch(
+            model, train_loader, optimizer, scaler, device,
+            grad_accum=cfg.training.grad_accum, grad_clip=cfg.training.grad_clip,
         )
-        val_loss, val_acc, val_time = val_epoch(
-            model, val_dataloader, criterion, device, 
-            use_amp=(scaler is not None)
-        )
-        
-        scheduler.step(val_loss)
-        
-        log.info(f"Train Loss: {tr_loss:.4f} - Acc: {tr_acc:.4f} - Time: {tr_time:.2f}s")
-        log.info(f"Val Loss: {val_loss:.4f} - Acc: {val_acc:.4f} - Time: {val_time:.2f}s")
+        scheduler.step()
 
-        # Log REAL-TIME su WandB
+        eval_max_batches = cfg.training.eval_max_batches
+        v_loss = val_loss(model, val_lm_loader, device, max_batches=eval_max_batches)
+        ev = evaluate(
+            model, val_gen_loader, tok, device,
+            max_new_tokens=cfg.training.max_new_tokens, log_samples=5,
+            max_batches=eval_max_batches,
+        )
+
+        log.info(f"Train loss {tr_loss:.4f} ({tr_time:.1f}s) | Val loss {v_loss:.4f} | "
+                  f"Val EM-acc {ev['acc']:.4f} ({ev['time']:.1f}s)")
+        for s in ev["samples"]:
+            log.info(f"  Q: {s['question']} | GT: {s['gt']} | GEN: {s['gen']!r}")
+
         wandb.log({
-            "epoch": epoch + 1,
-            "train/loss": tr_loss,
-            "train/acc": tr_acc,
-            "val/loss": val_loss,
-            "val/acc": val_acc,
-            "lr": optimizer.param_groups[0]["lr"]
+            "epoch": epoch + 1, "train/loss": tr_loss, "val/loss": v_loss,
+            "val/em_acc": ev["acc"], "lr": optimizer.param_groups[0]["lr"],
         })
-        
-        # Salvataggio miglior modello
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            save_path = ckpt_dir / f"best_model_{cfg.model.type}.pth"
-            torch.save(model.state_dict(), save_path)
-            log.info(f"  → Saved best model to {save_path.absolute()}")
-            wandb.run.summary["best_val_acc"] = val_acc
 
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            epochs_no_improve = 0
+        # --- best checkpoint su EM-acc ---
+        if ev["acc"] > best_acc:
+            best_acc = ev["acc"]
+            trainable = {k: v.cpu() for k, v in model.state_dict().items()
+                         if "vision_model" in k or "lora_" in k}
+            torch.save({"state": trainable, "bev_token_id": bev_token_id,
+                        "cfg": OmegaConf.to_container(cfg, resolve=True)},
+                       ckpt_dir / "best_vlm.pth")
+            wandb.run.summary["best_em_acc"] = best_acc
+            log.info(f"  -> salvato best (EM-acc {best_acc:.4f})")
+
+        # --- early stopping su val loss ---
+        if v_loss < best_val_loss:
+            best_val_loss = v_loss
+            patience_counter = 0
         else:
-            epochs_no_improve += 1
-            if epochs_no_improve >= early_stop_patience:
-                log.info(f"Early stopping triggered after {epoch+1} epochs!")
+            patience_counter += 1
+            log.info(f"  -> val loss non migliora ({patience_counter}/{patience})")
+            if patience_counter >= patience:
+                log.info(f"Early stopping: nessun miglioramento della val loss per {patience} epoche.")
                 break
-    
-    # --- ANALISI FINALE: SOLO LOCALE ---
-    log.info("Generating Final Analysis (Local files only)...")
-    try:
-        # Carica il miglior modello
-        best_model_path = ckpt_dir / f"best_model_{cfg.model.type}.pth"
-        if best_model_path.exists():
-            model.load_state_dict(torch.load(best_model_path, map_location=device))
-        
-        model.eval()
-        all_preds = []
-        all_targets = []
-        
-        with torch.no_grad():
-            for feat, quest, ans in val_dataloader:
-                out = model(feat.to(device), quest.to(device))
-                all_preds.extend(out.argmax(1).cpu().numpy().tolist())
-                all_targets.extend(ans.numpy().tolist())
-        
-        # Mapping classi completo (usando il training JSON per sicurezza)
-        with open(dict_dir / "NuScenes_train_questions.json", "r") as f:
-            train_json_data = json.load(f)
-        _, idx2answer = decode_question(train_json_data)
-        class_names = [idx2answer.get(i, f"ID_{i}") for i in range(len(idx2answer))]
-        
-        # 1. Confusion Matrix Locale
-        cm = confusion_matrix(all_targets, all_preds)
-        plt.figure(figsize=(12, 10))
-        sns.heatmap(cm, annot=False, cmap='Blues', xticklabels=class_names, yticklabels=class_names)
-        plt.xlabel('Predicted')
-        plt.ylabel('Actual')
-        plt.title(f'Confusion Matrix - {cfg.model.type}')
-        plt.tight_layout()
-        plt.savefig("confusion_matrix_local.png") # Salvataggio locale
-        plt.close()
-        
-        # 2. Visual Samples Locali
-        for i in range(5):
-            idx = random.randint(0, len(val_dataset) - 1)
-            sample = val_dataset.samples[idx]
-            token = sample["token"]
-            question_str = sample["question"]
-            gt_answer_str = sample["answer"]
-            
-            features, question_enc, _ = val_dataset[idx]
-            
-            with torch.no_grad():
-                out = model(features.unsqueeze(0).to(device), question_enc.unsqueeze(0).to(device))
-                pred_idx = out.argmax(1).item()
-                pred_answer = idx2answer.get(pred_idx, "UNKNOWN")
-            
-            bev_img = features.mean(dim=0).cpu().numpy()
-            fig, ax = plt.subplots(figsize=(7, 7))
-            ax.imshow(bev_img, cmap="viridis")
-            ax.set_title(f"Sample {i+1} | Token: {token}")
-            
-            info_text = f"Q: {question_str}\nGT: {gt_answer_str}\nPRED: {pred_answer}"
-            plt.figtext(0.5, 0.01, info_text, wrap=True, horizontalalignment='center', fontsize=10,
-                        bbox=dict(facecolor='white', alpha=0.8, edgecolor='gray'))
-            
-            plt.subplots_adjust(bottom=0.15)
-            plt.savefig(f"sample_result_{i+1}_local.png") # Salvataggio locale
-            plt.close()
-            
-        # 3. Metriche Finali JSON Locale
-        final_results = {
-            "best_val_acc": float(best_val_acc),
-            "final_val_loss": float(val_loss),
-            "model_type": cfg.model.type
-        }
-        with open("final_metrics.json", "w") as f:
-            json.dump(final_results, f, indent=4)
-            
-        log.info(f"Final Analysis complete. Local files saved in current Hydra directory: {os.getcwd()}")
 
-    except Exception as e:
-        log.error(f"Error during final analysis: {e}")
-
-    # Chiudi WandB
     wandb.finish()
+
 
 if __name__ == "__main__":
     main()

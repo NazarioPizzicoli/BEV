@@ -1,46 +1,41 @@
-# configs/config.yaml
 defaults:
   - _self_
-  - paths: mini.yaml
+  - paths: veh.yaml
 
-# Variabile per distinguere i run
 run_name: ${hydra:runtime.choices.paths}
 
 hydra:
   run:
     dir: outputs/${run_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
-  sweep:
-    dir: multirun/${run_name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
-    subdir: ${hydra.job.num}
   job:
-    chdir: True #Per salvare tutto nella cartella run.dir
+    chdir: True
 
-training:
-  batch_size: 4
-  lr: 1e-4
-  num_epochs: 50
-  num_workers: 2
-  early_stopping_patience: 5
-  scheduler_patience: 3
-  scheduler_factor: 0.5
-  gradient_clip: 1.0
-  use_amp: true
+llm:
+  name: Qwen/Qwen2.5-0.5B-Instruct
 
 model:
-  # Opzioni disponibili per type: 
-  # - "linear"  (1. Semplice: AdaptiveAvgPool2d + Linear)
-  # - "cnn"     (2. CNN: ResNet50 + FPN)
-  # - "vit"     (3. ViT: BEV-MAE style)
-  # - "former"  (4. Former: Cross-Attention con query learnable)
-  type: "linear" 
-  text:
-    use_lstm: true
-    embed_dim: 300
-    hidden_dim: 256
-    num_layers: 1
-    d_model: 512
+  vision_hidden_size: 512
+  vision_num_layers: 4
+  vision_num_heads: 8
+  num_queries: 100
+  lora:
+    r: 16
+    alpha: 32
+    dropout: 0.05
 
-#To resume this session: gemini --resume 193f4234-b7b1-433e-bef9-dab2228d97ae
-#gemini --resume abbf84f5-62f9-4154-94cc-cb60d4b10baf   
-#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
-#uv run python main.py defaults.paths=mini training.batch_size=4 training.num_workers=2 model.type="linear"
+training:
+  batch_size: 2 # batch size
+  eval_batch_size: 8
+  grad_accum: 8 # passaggi accumulati, batch size effettivo = batch_size X grad_accum
+  lr: 2e-4
+  num_epochs: 20
+  num_workers: 6
+  max_len: 200
+  max_new_tokens: 20
+  grad_clip: 1.0
+  eval_max_batches: null
+  early_stopping_patience: 5
+
+data:
+  train_fraction: 0.15
+  val_fraction: 0.1

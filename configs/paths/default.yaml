@@ -1,8 +1,0 @@
-# configs/paths/default.yaml
-root_dir: ${hydra:runtime.cwd}
-data_dir: ${paths.root_dir}/data
-dataset_dir: /media/robesafe-sandra/Datos1/dataset # Da cambiare perche attualmente funziona solo su questo pc
-dict_dir: ${paths.dataset_dir}/dict
-bev_features_dir: ${paths.dataset_dir}/bev_features
-glove_path: ${paths.root_dir}/glove.6B/glove.6B.300d.txt
-output_dir: ${paths.root_dir}/outputs

@@ -1,0 +1,5 @@
+root_dir: ${hydra:runtime.cwd}
+dataset_dir: /media/robesafe/Datos/dataset_mini_veh
+dict_dir: ${paths.dataset_dir}/dict_mini_veh
+bev_features_dir: ${paths.dataset_dir}/bev_features_mini_veh
+output_dir: ${paths.root_dir}/outputs

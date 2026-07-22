@@ -1,77 +1,26 @@
-# ==============================================================================
-# 1. FILE DI SISTEMA E IDE
-# ==============================================================================
-.DS_Store
-Thumbs.db
-*.swp
-.idea/
-.vscode/
-vscode/
-.project-root
-
-# ==============================================================================
-# 2. PYTHON CORE & AMBIENTI VIRTUALI
-# ==============================================================================
-__pycache__/
-*.py[codz]
-*$py.class
-*.so
-.Python
-build/
-dist/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Ambienti virtuali e package managers
+cat > .gitignore << 'EOF'
+# Ambiente
 .venv/
-venv/
-ENV/
-env/
-.env
-*.env
 bev/
-.python-version
-.python-history
+__pycache__/
+*.pyc
 
-# Tool di testing e linting
-.pytest_cache/
-.tox/
-.coverage
-htmlcov/
-.mypy_cache/
-.ruff_cache/
-
-# ==============================================================================
-# 3. DATA SCIENCE & MACHINE LEARNING (Jupyter, Modelli, Logs)
-# ==============================================================================
-.ipynb_checkpoints/
-*.notebook
-/notebooks/*
-# Artifacts e Pesi dei Modelli (pesanti/binari)
+# Dati e output pesanti/rigenerabili
+outputs/
+checkpoints/
+multirun/
+wandb/
 *.pt
 *.pth
-*.ckpt
-*.safetensors
-*.onnx
-*.pkl
-glove.6B/
-
-# ML Tracking & Logs
-wandb/
-mlruns/
-lightning_logs/
-.hydra/
-multirun/
 *.log
+data/
 
-# ==============================================================================
-# 4. GESTIONE DATA E OUTPUTS
-# ==============================================================================
-# Esclude tutto il contenuto di data e outputs, ma mantiene la struttura delle cartelle grazie ai .gitkeep
-data/**/*
-!data/**/.gitkeep
+# Cache dataset
+**/cache/
 
-outputs/**/*
-!outputs/**/.gitkeep
+# Risultati/visualizzazioni (rigenerabili da test_inference.py)
+viz_samples/
+results.json
+analysis_report.*
+notebooks/inspect_results.ipynb
+EOF

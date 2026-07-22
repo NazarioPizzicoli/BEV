@@ -1,0 +1,7 @@
+root_dir: ${hydra:runtime.cwd}
+#dataset_dir: ${oc.env:DATASET_DIR, ${paths.root_dir}/data/dataset_veh}
+dataset_dir: /media/robesafe/Datos/dataset_veh
+dict_dir: ${paths.dataset_dir}/dict_veh
+bev_features_dir: ${paths.dataset_dir}/bev_features_veh
+# output_dir: ${paths.root_dir}/outputs
+# se la vedi così e funziona da tanto tempo vuol dire che non è necessario e basta l'output_dir in hydra
