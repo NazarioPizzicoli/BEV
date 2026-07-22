@@ -11,15 +11,15 @@ is encoded into visual tokens via an attention-based Q-Former, projected into th
 embedding space of an LLM (Qwen2.5), and spliced into the text prompt. The LLM, adapted
 with LoRA, generates free-form natural language answers (not single-word/template answers).
 
-```markdown
 ## Architecture Overview
 
 ```mermaid
 graph TD
     A["BEV Features<br/><code>[B, 128, 200, 200]</code>"] -->|Q-Former| B["Query Tokens<br/><code>[B, N, hidden]</code>"]
     B -->|Linear Projection| C["LLM Tokens<br/><code>[B, N, d_llm]</code>"]
-    C -->|Spliced into &lt;|bev|&gt;| D["Qwen2.5<br/><i>(Frozen + LoRA)</i>"]
+    C -->|"Spliced into &lt;|bev|&gt;"| D["Qwen2.5<br/><i>(Frozen + LoRA)</i>"]
     D --> E["Generated Natural Language Answer"]
+```
 
 The project is inspired by [BeLLA (Mohan et al., 2025)](https://arxiv.org/abs/2512.06096),
 from which we adopt selected techniques (in particular BEV-text alignment pretraining),
