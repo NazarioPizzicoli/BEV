@@ -1,95 +1,101 @@
-# BEV-VLM: Visual Question Answering su Bird's-Eye-View per Guida Autonoma
+# BEV-VLM: Bird's-Eye-View Visual Question Answering for Autonomous Driving
 
-Modello Vision-Language generativo (image-text-to-text) che risponde a domande in linguaggio
-naturale su scene di guida autonoma, a partire da feature Bird's-Eye-View (BEV) invece che
-da immagini camera dirette.
+A generative Vision-Language Model (image-text-to-text) that answers natural language
+questions about driving scenes using Bird's-Eye-View (BEV) feature maps instead of raw
+camera images.
 
-## Panoramica
+## Overview
 
-Il progetto segue la ricetta **LLaVA** (visual instruction tuning): una feature map BEV
-viene incapsulata in "visual token" tramite un encoder attention-based (Q-Former), proiettata
-nello spazio di embedding di un LLM (Qwen2.5), e concatenata al prompt testuale. Il LLM,
-con LoRA, genera risposte naturali (non risposte a singola parola/template).
+The project follows the **LLaVA** recipe (visual instruction tuning): a BEV feature map
+is encoded into visual tokens via an attention-based Q-Former, projected into the
+embedding space of an LLM (Qwen2.5), and spliced into the text prompt. The LLM, adapted
+with LoRA, generates free-form natural language answers (not single-word/template answers).
 
-BEV [B,128,200,200] --(Q-Former)--> [B,N,hidden] --(proj. lineare)--> [B,N,d_llm]
---> spliced sui placeholder <|bev|> nel prompt --> Qwen2.5 (frozen + LoRA)
---> risposta generata in linguaggio naturale
+```markdown
+## Architecture Overview
 
-Il progetto è ispirato a [BeLLA (Mohan et al., 2025)](https://arxiv.org/abs/2512.06096),
-di cui riprendiamo tecniche selezionate (in particolare il pretraining di allineamento
-BEV-testo) adattandole alla nostra architettura e al nostro caso d'uso (feature BEV
-pre-calcolate, non immagini multi-camera raw).
+```mermaid
+graph TD
+    A["BEV Features<br/><code>[B, 128, 200, 200]</code>"] -->|Q-Former| B["Query Tokens<br/><code>[B, N, hidden]</code>"]
+    B -->|Linear Projection| C["LLM Tokens<br/><code>[B, N, d_llm]</code>"]
+    C -->|Spliced into &lt;|bev|&gt;| D["Qwen2.5<br/><i>(Frozen + LoRA)</i>"]
+    D --> E["Generated Natural Language Answer"]
 
-## Architettura
+The project is inspired by [BeLLA (Mohan et al., 2025)](https://arxiv.org/abs/2512.06096),
+from which we adopt selected techniques (in particular BEV-text alignment pretraining),
+adapted to our architecture and use case (precomputed BEV features rather than raw
+multi-camera images).
 
-| Componente | Implementazione |
+## Architecture
+
+| Component | Implementation |
 |---|---|
-| **Vision encoder** | Q-Former: query learnable + self/cross-attention verso la feature BEV flattenata (stile BEVFormer/BLIP-2) |
-| **LLM** | Qwen2.5-0.5B-Instruct, frozen + adapter LoRA (r=16, α=32) |
-| **Proiezione visiva** | Lineare, `hidden_size → d_llm` |
-| **Training** | Stadio singolo (LoRA + vision encoder allenati insieme) — vedi [Roadmap](#roadmap) per doppio stadio |
+| **Vision encoder** | Q-Former: learnable queries + self/cross-attention over the flattened BEV feature map (BEVFormer/BLIP-2 style) |
+| **LLM** | Qwen2.5-0.5B-Instruct, frozen backbone + LoRA adapter (r=16, α=32) |
+| **Visual projection** | Linear layer, `hidden_size → d_llm` |
+| **Training** | Single-stage (vision encoder + LoRA trained jointly) — see [Roadmap](#roadmap) for two-stage pretraining |
 
-### Struttura del repository
+### Repository structure
+
 BEV-VLM/
-├── main.py # entry point Hydra (training)
-├── test_inference.py # inferenza/valutazione finale su uno split completo
-├── analyze_results.py # aggregazione metriche per categoria di domanda
-├── visualize_samples.py # esporta esempi (BEV + Q/A) come immagini, per categoria
-├── make_notebook.py # genera un notebook Jupyter per ispezione interattiva
+├── main.py # Hydra entry point (training)
+├── test_inference.py # final inference/evaluation on a full split
+├── analyze_results.py # per-question-category metrics aggregation
+├── visualize_samples.py # exports sample images (BEV + Q/A) per category
+├── make_notebook.py # generates a Jupyter notebook for interactive inspection
 ├── configs/
-│ ├── config.yaml # config principale (Hydra)
+│ ├── config.yaml # main Hydra config
 │ └── paths/
-│ ├── mini_veh.yaml # subset piccolo, per debug
-│ └── veh.yaml # dataset completo
+│ ├── mini_veh.yaml # small subset, for debugging
+│ └── veh.yaml # full dataset
 └── src/bev/
 ├── data/
 │ └── dataset.py # BEVQADataset, tokenizer, collate functions
 ├── models/
 │ ├── vision.py # Q-Former (BEVQFormerModel) — vision encoder
-│ └── model.py # BEVVLM — assembla vision encoder + LLM + LoRA
+│ └── model.py # BEVVLM — assembles vision encoder + LLM + LoRA
 └── training/
 └── train.py # train_epoch, val_loss, evaluate
+
 ## Dataset
 
-Basato su **NuScenes-QA**, con risposte riformulate in linguaggio naturale
-(es. `"yes"` → `"Yes, there is."`) invece dei template a singola parola originali.
-Le domande sono categorizzate in 5 tipi: `exist`, `count`, `object`, `status`, `comparison`.
+Based on **NuScenes-QA**, with answers rewritten as natural sentences
+(e.g. `"yes"` → `"Yes, there is."`) instead of the original single-word templates.
+Questions fall into 5 categories: `exist`, `count`, `object`, `status`, `comparison`.
 
-Le feature BEV (`[128, 200, 200]`) sono precalcolate e salvate come tensori `.pt`.
+BEV features (`[128, 200, 200]`) are precomputed and stored as `.pt` tensors.
 
 ## Setup
 
 ```bash
-git clone <repo-url>
-cd BEV-VLM
-uv sync   # o: pip install -r requirements.txt
+git clone git@github.com:NazarioPizzicoli/BEV.git
+cd BEV
+uv sync
 
-# Configura i path del dataset (feature BEV + dizionari domande) in:
+# Set your dataset paths (BEV features + question dictionaries) in:
 #   configs/paths/veh.yaml
 #   configs/paths/mini_veh.yaml
 ```
 
-Servono: PyTorch, Transformers, PEFT, Hydra, Weights & Biases (login già effettuato
-con `wandb login`).
+Requires: PyTorch, Transformers, PEFT, Hydra, Weights & Biases (run `wandb login` once).
 
-## Uso
+## Usage
 
 ### Training
 
 ```bash
-# Debug rapido su subset piccolo
+# Quick debug run on a small subset
 uv run main.py paths=mini_veh training.num_epochs=2
 
-# Training completo
+# Full training run
 uv run main.py paths=veh training.batch_size=2 training.grad_accum=8 training.num_workers=6
 ```
 
-Parametri principali configurabili via CLI Hydra (override), tra cui:
-`model.num_queries` (n. di visual token), `training.batch_size`, `training.lr`,
-`data.train_fraction`/`data.val_fraction` (sottocampionamento per training più rapidi),
-`training.early_stopping_patience`.
+Key configurable parameters (Hydra CLI overrides): `model.num_queries` (number of visual
+tokens), `training.batch_size`, `training.lr`, `data.train_fraction` / `data.val_fraction`
+(subsampling for faster iteration), `training.early_stopping_patience`.
 
-### Inferenza e valutazione
+### Inference & evaluation
 
 ```bash
 uv run test_inference.py --ckpt checkpoints/best_vlm.pth --split val --out results.json
@@ -97,48 +103,46 @@ uv run analyze_results.py --results results.json
 uv run visualize_samples.py --results results.json --bev_dir <path/bev_features_veh/val>
 ```
 
-## Risultati
+## Results
 
-Modello: Qwen2.5-0.5B-Instruct + LoRA (r=16), Q-Former con 100 query, training su
-15% del train set / 10% del val set (233k → 35k esempi), 14 epoche (early stopping),
+Model: Qwen2.5-0.5B-Instruct + LoRA (r=16), Q-Former with 100 queries, trained on 15% of
+the train split / 10% of val (233k → 35k examples), 14 epochs (early stopping), single
 RTX 2080 Ti.
 
-| Categoria | Accuracy | N esempi |
+| Category | Accuracy | N samples |
 |---|---|---|
-| Exist | 0.8198 | 16.051 |
-| Count | 0.1858 | 11.447 |
-| Object | 0.4586 | 10.322 |
-| Status | 0.4996 | 9.214 |
-| Comparison | 0.6821 | 7.605 |
-| **Overall** | **0.5456** | **54.639** |
+| Exist | 0.8198 | 16,051 |
+| Count | 0.1858 | 11,447 |
+| Object | 0.4586 | 10,322 |
+| Status | 0.4996 | 9,214 |
+| Comparison | 0.6821 | 7,605 |
+| **Overall** | **0.5456** | **54,639** |
 
-Osservazioni:
-- Le domande di **esistenza** (yes/no dirette) e **comparazione** hanno le performance
-  migliori.
-- Il **conteggio** è il punto debole più marcato — comportamento noto in letteratura per
-  i VLM in generale, aggravato qui da poco training e vision encoder inizializzato da zero.
+Observations:
+- **Exist** (direct yes/no) and **comparison** questions perform best.
+- **Count** is the clear weak point — a known failure mode for VLMs in general, worsened
+  here by limited training and a vision encoder trained from scratch.
 
-> Nota metodologica: questi risultati non sono ancora direttamente comparabili con
-> BeLLA (paper di riferimento), che usa LLM da 3-7B su 4×H100 con dataset completo;
-> il nostro setup usa un LLM 0.5B su singola GPU consumer con training ridotto per
-> vincoli di tempo/hardware. Vedi [Roadmap](#roadmap).
+> Methodological note: these results are not yet directly comparable to BeLLA (reference
+> paper), which uses 3–7B LLMs on 4×H100 GPUs with the full dataset. Our setup uses a
+> 0.5B LLM on a single consumer GPU with reduced training due to time/hardware
+> constraints. See [Roadmap](#roadmap).
 
 ## Roadmap
 
-- [ ] **Training completo** (100% dataset, più epoche) — confronto diretto con la
-      baseline attuale ridotta
-- [ ] **Baseline senza vision encoder** (solo LLM+LoRA, text-only) — per quantificare
-      l'apporto reale delle feature BEV
-- [ ] **Pretraining Stage 1 (BEV-text alignment)**, ispirato a BeLLA: allineamento
-      preliminare vision encoder ↔ LLM su descrizioni di scena generate da annotazioni
-      NuScenes + CAN bus, prima del finetuning VQA (Stage 2)
-- [ ] Estensione a **DriveLM** (valutazione con BLEU-4/METEOR/ROUGE-L/CIDEr)
+- [ ] **Full training** (100% of the dataset, more epochs) — direct comparison against
+      the current reduced baseline
+- [ ] **No-vision baseline** (LLM+LoRA only, text-only) — to quantify the actual
+      contribution of BEV features
+- [ ] **Stage 1 pretraining (BEV-text alignment)**, inspired by BeLLA: preliminary
+      vision encoder ↔ LLM alignment on scene descriptions generated from NuScenes +
+      CAN bus annotations, prior to VQA finetuning (Stage 2)
+- [ ] Extension to **DriveLM** (evaluation via BLEU-4/METEOR/ROUGE-L/CIDEr)
 
-## Riferimenti
+## References
 
 - Liu et al., *Visual Instruction Tuning* (LLaVA), NeurIPS 2023
 - Mohan et al., *BeLLA: End-to-End Birds Eye View Large Language Assistant for
   Autonomous Driving*, arXiv:2512.06096, 2025
 - Qian et al., *NuScenes-QA: A Multi-modal Visual Question Answering Benchmark for
   Autonomous Driving Scenario*, AAAI 2024
-  
